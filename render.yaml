@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: chat-room
+    env: python
+    pythonVersion: 3.11.9  # Specify Python 3.11.9
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --worker-class eventlet -w 1 --timeout 120 app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true  # Render will generate a random secret key
+      - key: PYTHON_VERSION
+        value: 3.11.9
