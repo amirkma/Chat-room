@@ -10,12 +10,14 @@ from logging.handlers import RotatingFileHandler
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', secrets.token_hex(16))  # Use env var or generate random
-socketio = SocketIO(app, cors_allowed_origins="*")  # Allow cross-origin for SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60, ping_interval=25)  # Optimized for WebSocket
 
 # Logging setup
 if not app.debug:
     handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=1)
     handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
     app.logger.addHandler(handler)
 
 # Invite codes, users, banned users, and chat history
@@ -50,6 +52,7 @@ check_inactive_room()
 
 @app.route('/')
 def index():
+    app.logger.info("Serving index.html")
     return render_template('index.html')
 
 @app.route('/login', methods=['POST'])
@@ -58,7 +61,7 @@ def login():
     invite_code = request.form.get('invite_code')
     
     if not username or not invite_code:
-        app.logger.warning(f"Login attempt with missing username or invite code.")
+        app.logger.warning("Login attempt with missing username or invite code.")
         return render_template('index.html', error="Username and invite code are required!")
     if invite_code not in INVITE_CODES:
         app.logger.warning(f"Invalid invite code: {invite_code}")
@@ -92,6 +95,7 @@ def chat():
     if 'username' not in session:
         app.logger.warning("Unauthorized chat access attempt")
         return redirect(url_for('index'))
+    app.logger.info(f"User {session['username']} accessing chat with role {session['role']}")
     return render_template('chat.html', username=session['username'], role=session['role'], invite_code=session.get('invite_code'))
 
 def generate_secure_code():
@@ -103,19 +107,23 @@ def generate_secure_code():
 def connect(auth=None):
     username = session.get('username')
     invite_code = session.get('invite_code')
-    if username and invite_code in INVITE_CODES:
-        role = session.get('role', 'Member')
-        users[request.sid] = {'username': username, 'role': role, 'invite_code': invite_code}
-        update_user_list()
-        emit('message', {'username': 'System', 'message': f'{username} ({role}) joined.', 'timestamp': time.strftime('%H:%M:%S')}, broadcast=True)
-        for msg in chat_history:
-            emit('message', msg)
-        if role == 'Owner':
-            emit('owner_code', {'code': invite_code})
-        app.logger.info(f"User {username} ({role}) connected via SocketIO")
-    else:
+    if not username or not invite_code:
         app.logger.warning(f"Failed SocketIO connect attempt: username={username}, invite_code={invite_code}")
         disconnect()
+        return
+    if invite_code not in INVITE_CODES or username in banned:
+        app.logger.warning(f"Invalid connect attempt: username={username}, invite_code={invite_code}")
+        disconnect()
+        return
+    role = session.get('role', 'Member')
+    users[request.sid] = {'username': username, 'role': role, 'invite_code': invite_code}
+    update_user_list()
+    emit('message', {'username': 'System', 'message': f'{username} ({role}) joined.', 'timestamp': time.strftime('%H:%M:%S')}, broadcast=True)
+    for msg in chat_history:
+        emit('message', msg)
+    if role == 'Owner':
+        emit('owner_code', {'code': invite_code})
+    app.logger.info(f"User {username} ({role}) connected via SocketIO")
 
 @socketio.on('disconnect')
 def disconnect_handler():
@@ -137,8 +145,10 @@ def handle_message(data):
         return
     username = user_data['username']
     role = user_data['role']
-    message = data['message']
-    
+    message = data.get('message')
+    if not message:
+        app.logger.warning(f"Empty message from {username}")
+        return
     msg_data = {'username': username, 'role': role, 'message': message, 'timestamp': time.strftime('%H:%M:%S')}
     chat_history.append(msg_data)
     emit('message', msg_data, broadcast=True)
@@ -150,9 +160,9 @@ def handle_kick(data):
     if not user_data or user_data['role'] != 'Owner':
         app.logger.warning(f"Unauthorized kick attempt by {user_data.get('username') if user_data else 'unknown'}")
         return
-    target = data['username']
-    if target == user_data['username']:
-        app.logger.warning(f"Owner {target} attempted to kick themselves")
+    target = data.get('username')
+    if not target or target == user_data['username']:
+        app.logger.warning(f"Invalid kick attempt by {user_data['username']}: target={target}")
         return
     for sid, user in list(users.items()):
         if user['username'] == target and user['role'] != 'Owner':
@@ -170,9 +180,9 @@ def handle_ban(data):
     if not user_data or user_data['role'] != 'Owner':
         app.logger.warning(f"Unauthorized ban attempt by {user_data.get('username') if user_data else 'unknown'}")
         return
-    target = data['username']
-    if target == user_data['username']:
-        app.logger.warning(f"Owner {target} attempted to ban themselves")
+    target = data.get('username')
+    if not target or target == user_data['username']:
+        app.logger.warning(f"Invalid ban attempt by {user_data['username']}: target={target}")
         return
     banned.add(target)
     for sid, user in list(users.items()):
