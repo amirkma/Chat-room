@@ -1,5 +1,6 @@
 import gevent
 gevent.monkey_patch()
+socketio = SocketIO(app, async_mode='gevent', logger=True, engineio_logger=True, ping_timeout=30, ping_interval=15)
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from flask_socketio import SocketIO, emit, disconnect, join_room
 import secrets
