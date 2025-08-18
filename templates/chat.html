@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KMA TOOLS- Chat Room</title>
+    <title>KMA TOOLS-Chat Room</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         body {
@@ -102,7 +102,7 @@
             margin: 5px 0;
             padding: 8px;
             border-radius: 4px;
-            cursor: pointer; /* برای کلیک کردن روی پیام */
+            cursor: pointer;
         }
         .message.user {
             background: rgba(255, 255, 255, 0.2);
@@ -191,6 +191,21 @@
         #user-menu li {
             padding: 5px 0;
             color: #fff;
+            display: flex;
+            align-items: center;
+        }
+        #user-menu li button {
+            margin-left: 10px;
+            background: #ff4444;
+            color: #fff;
+            border: none;
+            padding: 3px 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        #user-menu li button.ban {
+            background: #cc0000;
         }
         footer {
             background: #333;
@@ -299,6 +314,7 @@
         const replyUsername = document.getElementById('reply-username');
         const replyMessage = document.getElementById('reply-message');
         const cancelReply = document.getElementById('cancel-reply');
+        const role = '{{ role }}';
         let isMuted = false;
         let replyingTo = null;
 
@@ -334,7 +350,7 @@
 
             chatBody.appendChild(messageDiv);
             chatBody.scrollTop = chatBody.scrollHeight;
-            if (!isMuted) {
+            if (!isMuted && messageSound) {
                 messageSound.play().catch(err => console.log('Audio play error:', err));
             }
         });
@@ -345,6 +361,21 @@
             data.users.forEach(user => {
                 const li = document.createElement('li');
                 li.textContent = `${user.username} (${user.role})`;
+                if (role === 'Owner' && user.role !== 'Owner') {
+                    const kickButton = document.createElement('button');
+                    kickButton.textContent = 'Kick';
+                    kickButton.addEventListener('click', () => {
+                        socket.emit('message', { message: `/kick ${user.username}` });
+                    });
+                    const banButton = document.createElement('button');
+                    banButton.textContent = 'Ban';
+                    banButton.className = 'ban';
+                    banButton.addEventListener('click', () => {
+                        socket.emit('message', { message: `/ban ${user.username}` });
+                    });
+                    li.appendChild(kickButton);
+                    li.appendChild(banButton);
+                }
                 userList.appendChild(li);
             });
         });
