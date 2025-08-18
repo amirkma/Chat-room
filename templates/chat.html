@@ -551,6 +551,7 @@
 
         let replyingTo = null;
         const role = '{{ role }}';
+        const roomId = '{{ session["room_id"] }}';
         const rooms = {};
 
         function sendMessage() {
@@ -561,7 +562,7 @@
             }
             const message = messageInput.value.trim();
             if (message) {
-                const messageData = { message: message, room_id: '{{ session["room_id"] }}' };
+                const messageData = { message: message, room_id: roomId };
                 if (replyingTo) {
                     messageData.reply_to = replyingTo;
                 }
@@ -581,7 +582,7 @@
         function sendCommand(command) {
             if (command) {
                 console.log('Sending command:', command);
-                socket.emit('message', { message: command, room_id: '{{ session["room_id"] }}' });
+                socket.emit('message', { message: command, room_id: roomId });
             } else {
                 console.log('Command is empty, not sending');
             }
@@ -645,11 +646,17 @@
                 });
             }
 
+            // Initialize rooms[roomId] if not exists
+            if (roomId && !rooms[roomId]) {
+                rooms[roomId] = { chat_history: [] };
+                console.log(`Initialized rooms[${roomId}] with empty chat_history`);
+            }
+
             socket.on('connect', function() {
                 console.log('Connected to server');
-                const roomId = '{{ session["room_id"] }}';
-                if (!rooms[roomId]) {
-                    rooms[roomId] = { chat_history: [] };
+                if (!roomId) {
+                    console.error('No room_id found in session');
+                    return;
                 }
                 socket.emit('join_room', { room_id: roomId, username: '{{ username }}', role: role });
             });
@@ -661,8 +668,6 @@
 
             socket.on('message', function(data) {
                 console.log('Received message:', data);
-                console.log('Current chat_history:', rooms['{{ session["room_id"] }}'].chat_history);
-                console.log('Looking for reply_to:', data.reply_to);
                 if (!chat) {
                     console.error('chat element not found when receiving message');
                     return;
@@ -672,11 +677,10 @@
                 div.dataset.messageId = data.id;
 
                 if (data.reply_to) {
+                    console.log('Looking for reply_to:', data.reply_to);
                     const replyInfo = document.createElement('div');
                     replyInfo.className = 'reply-info';
-                    const repliedMsg = rooms['{{ session["room_id"] }}'].chat_history.find(msg => msg.id === data.reply_to) || {};
-                    console.log('Found replied message:', repliedMsg);
-                    replyInfo.textContent = `Replying to ${repliedMsg.username || '[Message not found]'}: ${repliedMsg.message || ''}`;
+                    replyInfo.textContent = `Replying to ${data.reply_username || '[Message not found]'}: ${data.reply_message || ''}`;
                     div.appendChild(replyInfo);
                 }
 
@@ -700,7 +704,13 @@
                 chat.appendChild(div);
                 chat.scrollTop = chat.scrollHeight;
 
-                rooms['{{ session["room_id"] }}'].chat_history.push(data);
+                // Ensure rooms[roomId] exists before accessing chat_history
+                if (!rooms[roomId]) {
+                    rooms[roomId] = { chat_history: [] };
+                    console.log(`Initialized rooms[${roomId}] with empty chat_history during message`);
+                }
+                console.log('Current chat_history:', rooms[roomId].chat_history);
+                rooms[roomId].chat_history.push(data);
 
                 const audio = document.getElementById('backgroundMusic');
                 if (audio) {
