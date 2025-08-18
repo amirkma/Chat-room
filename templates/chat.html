@@ -6,7 +6,7 @@
     <title>KMA Tools - Chat Room</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap" rel="stylesheet">
     <link rel="icon" href="https://uploadkon.ir/uploads/bf1625_25Screenshot-2024-03-04-150309.png">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -497,7 +497,7 @@
         <h1 class="text-2xl font-bold mb-4" style="color: #00c4cc; text-shadow: 0 0 8px #7700ff;">Chat Room - Welcome {{ username }}</h1>
         {% if role == 'Owner' %}
             <div class="room-code-section">
-                <p>Room Code: {{ invite_code }} <button class="copy-btn" onclick="copyCode('{{ invite_code }}')">Copy</button></p>
+                <p>Room Code: <span id="room-code">{{ invite_code }}</span> <button class="copy-btn" onclick="copyCode()">Copy</button></p>
             </div>
         {% endif %}
         <div class="reply-box" id="reply-box">
@@ -526,18 +526,28 @@
         <button id="playBtn">🔇</button>
         <button id="stopBtn" style="display: none;">🔊</button>
     </div>
-    <audio id="backgroundMusic" loop autoplay>
-        <source src="https://uploadkon.ir/uploads/22e225_25music1.mp3" type="audio/mp3">
+    <audio id="backgroundMusic" loop>
+        <source src="/static/message.mp3" type="audio/mp3">
         Your browser does not support the audio element.
     </audio>
-    <!-- Modal for kick/ban/room close notification -->
     <div id="kickBanModal" class="kick-ban-modal">
         <div class="kick-ban-modal-content">
             <p id="kickBanMessage"></p>
         </div>
     </div>
     <script>
-        const socket = io({ transports: ['websocket', 'polling'] });
+        // Debugging JavaScript errors
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error(`JS Error: ${message} at ${source}:${lineno}:${colno}`);
+            return true;
+        };
+
+        const socket = io({ 
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
         const chat = document.getElementById('chat');
         const userList = document.getElementById('user-list-content');
         const messageInput = document.getElementById('message');
@@ -555,6 +565,11 @@
             if (!rooms[roomId]) {
                 rooms[roomId] = { chat_history: [] };
             }
+        });
+
+        socket.on('connect_error', function(error) {
+            console.error('Connection error:', error);
+            alert('Failed to connect to server. Please try again.');
         });
 
         socket.on('message', function(data) {
@@ -578,16 +593,21 @@
             `;
             div.addEventListener('click', () => {
                 replyingTo = data.id;
-                replyUsername.textContent = data.username;
-                replyMessage.textContent = data.message;
+                replyUsername.textContent = data.username || 'Unknown';
+                replyMessage.textContent = data.message || '';
                 replyBox.style.display = 'block';
                 messageInput.focus();
             });
             chat.appendChild(div);
             chat.scrollTop = chat.scrollHeight;
 
-            // ذخیره پیام در تاریخچه محلی
             rooms['{{ session["room_id"] }}'].chat_history.push(data);
+
+            // Play notification sound
+            const audio = document.getElementById('backgroundMusic');
+            if (audio) {
+                audio.play().catch(err => console.error('Audio play error:', err));
+            }
         });
 
         socket.on('user_list', function(data) {
@@ -611,7 +631,7 @@
         socket.on('kick', function(data) {
             const modal = document.getElementById('kickBanModal');
             const message = document.getElementById('kickBanMessage');
-            message.innerText = data.message;
+            message.textContent = data.message;
             modal.style.display = 'block';
             setTimeout(() => {
                 window.location.href = '/';
@@ -621,7 +641,7 @@
         socket.on('ban', function(data) {
             const modal = document.getElementById('kickBanModal');
             const message = document.getElementById('kickBanMessage');
-            message.innerText = data.message;
+            message.textContent = data.message;
             modal.style.display = 'block';
             setTimeout(() => {
                 window.location.href = '/';
@@ -631,7 +651,7 @@
         socket.on('room_closed', function(data) {
             const modal = document.getElementById('kickBanModal');
             const message = document.getElementById('kickBanMessage');
-            message.innerText = data.message;
+            message.textContent = data.message;
             modal.style.display = 'block';
             setTimeout(() => {
                 window.location.href = '/';
@@ -657,12 +677,15 @@
 
         function sendCommand(command) {
             socket.emit('message', { message: command });
+            console.log('Sent command:', command);
         }
 
-        function copyCode(code) {
+        function copyCode() {
+            const code = document.getElementById('room-code').textContent;
             navigator.clipboard.writeText(code).then(() => {
                 alert('Code copied!');
             }).catch(err => {
+                console.error('Error copying code:', err);
                 alert('Error copying code: ' + err);
             });
         }
@@ -672,6 +695,7 @@
             replyBox.style.display = 'none';
         });
 
+        // Particle animation
         const canvas = document.getElementById('particleCanvas');
         const ctx = canvas.getContext('2d');
 
@@ -709,8 +733,11 @@
         const particlesArray = [];
         const particleCount = 100;
 
-        for (let i = 0; i < particleCount; i++) {
-            particlesArray.push(new Particle());
+        function initParticles() {
+            particlesArray.length = 0; // Clear existing particles
+            for (let i = 0; i < particleCount; i++) {
+                particlesArray.push(new Particle());
+            }
         }
 
         function connectParticles() {
@@ -732,22 +759,28 @@
         }
 
         function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let i = 0; i < particlesArray.length; i++) {
-                particlesArray[i].update();
-                particlesArray[i].draw();
+            try {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                for (let i = 0; i < particlesArray.length; i++) {
+                    particlesArray[i].update();
+                    particlesArray[i].draw();
+                }
+                connectParticles();
+                requestAnimationFrame(animate);
+            } catch (err) {
+                console.error('Animation error:', err);
             }
-            connectParticles();
-            requestAnimationFrame(animate);
         }
 
+        // Initialize particles and start animation
+        initParticles();
         animate();
 
+        // Header scroll behavior
         let lastScrollTop = 0;
         window.addEventListener('scroll', () => {
             const header = document.querySelector('.header');
             const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
-
             if (currentScroll > lastScrollTop && currentScroll > 50) {
                 header.classList.add('hidden');
             } else {
@@ -756,17 +789,18 @@
             lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
         });
 
+        // Audio controls
         const audio = document.getElementById('backgroundMusic');
         const playBtn = document.getElementById('playBtn');
         const stopBtn = document.getElementById('stopBtn');
 
         audio.volume = 0.5;
         audio.play().catch(error => {
-            console.log("Autoplay blocked by browser:", error);
+            console.error('Autoplay blocked by browser:', error);
         });
 
         playBtn.addEventListener('click', () => {
-            audio.play();
+            audio.play().catch(err => console.error('Audio play error:', err));
             playBtn.style.display = 'none';
             stopBtn.style.display = 'block';
         });
@@ -778,6 +812,7 @@
             playBtn.style.display = 'block';
         });
 
+        // Menu and user list toggles
         const menuToggle = document.querySelector('.menu-toggle');
         const navMenu = document.querySelector('.nav-menu');
         const userListToggle = document.querySelector('.user-list-toggle');
