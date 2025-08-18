@@ -183,6 +183,12 @@
             border-color: #ff4d4f;
             font-style: italic;
         }
+        .message.join {
+            background-color: rgba(0, 255, 136, 0.3);
+            align-self: center;
+            border-color: #00ff88;
+            font-style: italic;
+        }
         .message.reply {
             border-left: 3px solid #00ff88;
             padding-left: 12px;
@@ -660,14 +666,13 @@
                     return;
                 }
                 const div = document.createElement('div');
-                div.className = `message ${data.role ? data.role.toLowerCase() : 'system'}${data.reply_to ? ' reply' : ''}`;
+                div.className = `message ${data.type === 'join' ? 'join' : data.role ? data.role.toLowerCase() : 'system'}${data.reply_to ? ' reply' : ''}`;
                 div.dataset.messageId = data.id;
 
                 if (data.reply_to) {
                     const replyInfo = document.createElement('div');
                     replyInfo.className = 'reply-info';
-                    const repliedMsg = rooms['{{ session["room_id"] }}']?.chat_history?.find(msg => msg.id === data.reply_to) || {};
-                    replyInfo.textContent = `Replying to ${repliedMsg.username || 'Unknown'}: ${repliedMsg.message || ''}`;
+                    replyInfo.textContent = `Replying to ${data.username || 'Unknown'}: ${data.message || ''}`;
                     div.appendChild(replyInfo);
                 }
 
