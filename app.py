@@ -41,12 +41,15 @@ def check_inactive_room(room_id):
 
 @app.route('/')
 def index():
+    logging.debug(f"Rendering index.html, rooms: {list(rooms.keys())}")
     return render_template('index.html')
 
 @app.route('/login', methods=['POST'])
 def login():
     username = request.form['username']
     invite_code = request.form['invite_code']
+    
+    logging.debug(f"Login attempt: username={username}, invite_code={invite_code}, available rooms={list(rooms.keys())}")
     
     room_id = None
     for rid, room in rooms.items():
@@ -56,7 +59,7 @@ def login():
     
     if room_id is None:
         logging.warning(f"Invalid invite code: {invite_code}")
-        return render_template('index.html', error="Invalid invite code!")
+        return render_template('index.html', error=f"Invalid invite code: {invite_code}")
     if username in rooms[room_id]['banned']:
         logging.warning(f"Banned user attempted to join: {username}")
         return render_template('index.html', error="You are banned!")
@@ -104,8 +107,11 @@ def chat():
         logging.warning("Unauthorized access to /chat")
         return redirect(url_for('index'))
     room_id = session['room_id']
+    if room_id not in rooms:
+        logging.warning(f"Room {room_id} not found for user {session['username']}")
+        return redirect(url_for('index'))
     role = session.get('role', 'Member')
-    invite_code = rooms[room_id]['invite_code'] if room_id in rooms else ''
+    invite_code = rooms[room_id]['invite_code']
     logging.debug(f"Rendering chat for user {session['username']} in room {room_id}")
     return render_template('chat.html', username=session['username'], role=role, invite_code=invite_code if role == 'Owner' else '')
 
