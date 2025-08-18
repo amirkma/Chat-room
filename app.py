@@ -9,6 +9,7 @@ import hashlib
 import threading
 import time
 import logging
+from datetime import datetime
 
 # تنظیم لاگ برای دیباگ
 logging.basicConfig(level=logging.DEBUG)
@@ -146,6 +147,32 @@ def connect(auth=None):
     for msg in rooms[room_id]['chat_history']:
         emit('message', msg, to=request.sid)
 
+@socketio.on('join_room')
+def on_join(data):
+    room_id = data.get('room_id')
+    username = data.get('username')
+    role = data.get('role')
+    
+    if not room_id or not username or room_id not in rooms:
+        logging.error(f"Join room failed: room_id={room_id}, username={username}")
+        emit('room_closed', {'message': 'Room does not exist'})
+        return
+    
+    join_room(room_id)
+    rooms[room_id]['users'][request.sid] = {'username': username, 'role': role}
+    logging.debug(f"User {username} joined room {room_id} with role {role}")
+    
+    update_user_list(room_id)
+    emit('message', {
+        'id': secrets.token_hex(8),
+        'username': 'System',
+        'message': f'{username} ({role}) joined.',
+        'timestamp': time.strftime('%H:%M:%S'),
+        'type': 'join'
+    }, room=room_id)
+    for msg in rooms[room_id]['chat_history']:
+        emit('message', msg, to=request.sid)
+
 @socketio.on('disconnect')
 def disconnect_handler():
     room_id = session.get('room_id')
@@ -158,39 +185,22 @@ def disconnect_handler():
         username = user_data['username']
         role = user_data['role']
         logging.info(f"User {username} disconnected from room {room_id}")
-        if role == 'Owner':
-            emit('message', {
-                'id': secrets.token_hex(8),
-                'username': 'System',
-                'message': 'Room closed because Owner left.',
-                'timestamp': time.strftime('%H:%M:%S'),
-                'type': 'system'
-            }, room=room_id)
-            for sid in list(rooms[room_id]['users'].keys()):
-                emit('room_closed', {'message': 'Room closed because Owner left.'}, to=sid)
-                disconnect(sid)
-            if room_id in inactive_timers:
-                inactive_timers[room_id].cancel()
-            del rooms[room_id]
-            del last_check_times[room_id]
-            logging.info(f"Room {room_id} closed: Owner disconnected.")
-        else:
-            update_user_list(room_id)
-            msg = {
-                'id': secrets.token_hex(8),
-                'username': 'System',
-                'message': f'{username} ({role}) left.',
-                'timestamp': time.strftime('%H:%M:%S'),
-                'type': 'leave'
-            }
-            rooms[room_id]['chat_history'].append(msg)
-            emit('message', msg, room=room_id)
+        update_user_list(room_id)
+        msg = {
+            'id': secrets.token_hex(8),
+            'username': 'System',
+            'message': f'{username} ({role}) left.',
+            'timestamp': time.strftime('%H:%M:%S'),
+            'type': 'leave'
+        }
+        rooms[room_id]['chat_history'].append(msg)
+        emit('message', msg, room=room_id)
 
 @socketio.on('message')
 def handle_message(data):
-    room_id = session.get('room_id')
-    if room_id not in rooms:
-        logging.warning(f"Message: Room {room_id} not found")
+    room_id = data.get('room_id')
+    if not room_id or room_id not in rooms:
+        logging.warning(f"Message: Invalid room_id {room_id}")
         return
     
     user_data = rooms[room_id]['users'].get(request.sid)
@@ -200,48 +210,58 @@ def handle_message(data):
     
     username = user_data['username']
     role = user_data['role']
-    message = data['message']
-    reply_to = data.get('reply_to', None)
+    message = data.get('message')
+    reply_to = data.get('reply_to')
+    
     logging.debug(f"Message from {username} in room {room_id}: {message}, reply_to: {reply_to}")
     
     if role == 'Owner' and message.startswith('/'):
         command = message[1:].split()
-        if command[0] == 'kick' and len(command) > 1:
-            target = command[1]
+        if not command:
+            return
+        cmd = command[0].lower()
+        args = command[1:]
+        
+        if cmd == 'kick' and args:
+            target = args[0]
             for sid, user in list(rooms[room_id]['users'].items()):
-                if user['username'] == target:
-                    emit('kick', {'message': 'You have been kicked!'}, to=sid)
-                    disconnect(sid)
+                if user['username'] == target and user['role'] != 'Owner':
+                    rooms[room_id]['users'].pop(sid, None)
+                    emit('kick', {'message': f'You have been kicked by {username}'}, to=sid)
                     msg = {
                         'id': secrets.token_hex(8),
                         'username': 'System',
-                        'message': f'{target} was kicked.',
+                        'message': f'{target} was kicked by {username}.',
                         'timestamp': time.strftime('%H:%M:%S'),
                         'type': 'system'
                     }
                     rooms[room_id]['chat_history'].append(msg)
                     emit('message', msg, room=room_id)
                     update_user_list(room_id)
+                    logging.debug(f"User {target} kicked from room {room_id}")
                     return
-        elif command[0] == 'ban' and len(command) > 1:
-            target = command[1]
+        
+        elif cmd == 'ban' and args:
+            target = args[0]
             rooms[room_id]['banned'].add(target)
             for sid, user in list(rooms[room_id]['users'].items()):
-                if user['username'] == target:
-                    emit('ban', {'message': 'You have been banned!'}, to=sid)
-                    disconnect(sid)
-            msg = {
-                'id': secrets.token_hex(8),
-                'username': 'System',
-                'message': f'{target} was banned.',
-                'timestamp': time.strftime('%H:%M:%S'),
-                'type': 'system'
-            }
-            rooms[room_id]['chat_history'].append(msg)
-            emit('message', msg, room=room_id)
-            update_user_list(room_id)
-            return
-        elif command[0] == 'close':
+                if user['username'] == target and user['role'] != 'Owner':
+                    rooms[room_id]['users'].pop(sid, None)
+                    emit('ban', {'message': f'You have been banned by {username}'}, to=sid)
+                    msg = {
+                        'id': secrets.token_hex(8),
+                        'username': 'System',
+                        'message': f'{target} was banned by {username}.',
+                        'timestamp': time.strftime('%H:%M:%S'),
+                        'type': 'system'
+                    }
+                    rooms[room_id]['chat_history'].append(msg)
+                    emit('message', msg, room=room_id)
+                    update_user_list(room_id)
+                    logging.debug(f"User {target} banned from room {room_id}")
+                    return
+        
+        elif cmd == 'close':
             emit('message', {
                 'id': secrets.token_hex(8),
                 'username': 'System',
@@ -265,13 +285,15 @@ def handle_message(data):
         'role': role,
         'message': message,
         'timestamp': time.strftime('%H:%M:%S'),
-        'type': 'user',
-        'reply_to': reply_to
+        'type': 'user'
     }
+    if reply_to:
+        msg_data['reply_to'] = reply_to
     rooms[room_id]['chat_history'].append(msg_data)
     if len(rooms[room_id]['chat_history']) > 100:
         rooms[room_id]['chat_history'] = rooms[room_id]['chat_history'][-100:]
     emit('message', msg_data, room=room_id)
+    logging.debug(f"Message sent to room {room_id}: {msg_data}")
 
 def update_user_list(room_id):
     if room_id in rooms:
