@@ -1,4 +1,4 @@
-flask
-flask-socketio
-gunicorn
+flask==2.3.3
+flask-socketio==5.3.6
+gunicorn==23.0.0
 gevent==24.2.1
