@@ -661,6 +661,8 @@
 
             socket.on('message', function(data) {
                 console.log('Received message:', data);
+                console.log('Current chat_history:', rooms['{{ session["room_id"] }}'].chat_history);
+                console.log('Looking for reply_to:', data.reply_to);
                 if (!chat) {
                     console.error('chat element not found when receiving message');
                     return;
@@ -673,7 +675,8 @@
                     const replyInfo = document.createElement('div');
                     replyInfo.className = 'reply-info';
                     const repliedMsg = rooms['{{ session["room_id"] }}'].chat_history.find(msg => msg.id === data.reply_to) || {};
-                    replyInfo.textContent = `Replying to ${repliedMsg.username || 'Unknown'}: ${repliedMsg.message || ''}`;
+                    console.log('Found replied message:', repliedMsg);
+                    replyInfo.textContent = `Replying to ${repliedMsg.username || '[Message not found]'}: ${repliedMsg.message || ''}`;
                     div.appendChild(replyInfo);
                 }
 
@@ -777,7 +780,7 @@
                 const modal = document.getElementById('kickBanModal');
                 const message = document.getElementById('kickBanMessage');
                 if (modal && message) {
-                    message.innerText = data.message;
+                    message.innerText = data.message || 'Room closed by Owner.';
                     modal.style.display = 'block';
                     setTimeout(() => {
                         window.location.href = '/';
