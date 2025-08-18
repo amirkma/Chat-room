@@ -1,5 +1,6 @@
-import eventlet
-eventlet.monkey_patch()
+import gevent
+gevent.monkey_patch()
+
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from flask_socketio import SocketIO, emit, disconnect, join_room
 import secrets
@@ -11,9 +12,9 @@ import logging
 # تنظیم لاگ برای دیباگ
 logging.basicConfig(level=logging.DEBUG)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, async_mode='eventlet', logger=True, engineio_logger=True)
+socketio = SocketIO(app, async_mode='gevent', logger=True, engineio_logger=True, ping_timeout=30, ping_interval=15)
 
 # ساختار داده برای روم‌ها
 rooms = {}  # {room_id: {'invite_code': str, 'users': {sid: {'username': str, 'role': str}}, 'chat_history': [], 'banned': set()}}
@@ -129,7 +130,7 @@ def connect(auth=None):
     
     update_user_list(room_id)
     emit('message', {
-        'id': secrets.token_hex(8),  # اضافه کردن ID منحصربه‌فرد برای پیام
+        'id': secrets.token_hex(8),
         'username': 'System',
         'message': f'{username} ({role}) joined.',
         'timestamp': time.strftime('%H:%M:%S'),
@@ -193,7 +194,7 @@ def handle_message(data):
     username = user_data['username']
     role = user_data['role']
     message = data['message']
-    reply_to = data.get('reply_to', None)  # گرفتن اطلاعات پیام ریپلای‌شده
+    reply_to = data.get('reply_to', None)
     logging.debug(f"Message from {username} in room {room_id}: {message}, reply_to: {reply_to}")
     
     if role == 'Owner' and message.startswith('/'):
@@ -258,7 +259,7 @@ def handle_message(data):
         'message': message,
         'timestamp': time.strftime('%H:%M:%S'),
         'type': 'user',
-        'reply_to': reply_to  # ذخیره اطلاعات ریپلای
+        'reply_to': reply_to
     }
     rooms[room_id]['chat_history'].append(msg_data)
     if len(rooms[room_id]['chat_history']) > 100:
