@@ -58,6 +58,22 @@
             display: flex;
             align-items: center;
         }
+        }
+        .input-field {
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 2px solid #00c4cc;
+            box-shadow: 0 0 10px #00c4cc;
+            padding: 10px;
+            color: #fff;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            width: 80%;
+            max-width: 300px;
+            transition: box-shadow 0.3s ease;
+        }
+        .input-field:focus {
+            box-shadow: 0 0 20px #00c4cc;
+        }
         .logo img {
             width: 40px;
             height: 40px;
@@ -343,12 +359,12 @@
                 <p class="error">{{ error }}</p>
             {% endif %}
             <form action="/login" method="post" class="flex flex-col items-center">
-                <input type="text" id="username" name="username" placeholder="Username" class="p-2 rounded bg-gray-800 text-white mb-4 w-64" required>
-                <input type="text" id="invite_code" name="invite_code" placeholder="Invite Code" class="p-2 rounded bg-gray-800 text-white mb-6 w-64" required>
+                <input type="text" id="username" name="username" placeholder="Username" class=".input-field" required>
+                <input type="text" id="invite_code" name="invite_code" placeholder="Invite Code" class=".input-field" required>
                 <button type="submit" class="action-btn">Join Now</button>
             </form>
             <form id="generateCodeForm" class="flex flex-col items-center mt-4">
-                <input type="text" id="usernameForCode" name="username" placeholder="Username for New Code" class="p-2 rounded bg-gray-800 text-white mb-4 w-64" required>
+                <br><input type="text" id="usernameForCode" name="username" placeholder="Username for New Code" class=".input-field" required>
                 <button type="button" onclick="generateCode()" class="action-btn">Generate New Code</button>
             </form>
         </div>
