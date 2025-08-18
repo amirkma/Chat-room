@@ -6,7 +6,7 @@
     <title>KMA Tools - Chat Room</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap" rel="stylesheet">
     <link rel="icon" href="https://uploadkon.ir/uploads/bf1625_25Screenshot-2024-03-04-150309.png">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -181,12 +181,6 @@
             background-color: rgba(255, 77, 79, 0.3);
             align-self: center;
             border-color: #ff4d4f;
-            font-style: italic;
-        }
-        .message.join {
-            background-color: rgba(0, 255, 136, 0.3);
-            border-color: #00ff88;
-            align-self: center;
             font-style: italic;
         }
         .message.reply {
@@ -542,160 +536,178 @@
             return true;
         };
 
-        const socket = io({ 
-            transports: ['websocket', 'polling'],
-            reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000
-        });
-        const chat = document.getElementById('chat');
-        const userList = document.getElementById('user-list-content');
-        const messageInput = document.getElementById('message');
-        const replyBox = document.getElementById('reply-box');
-        const replyUsername = document.getElementById('reply-username');
-        const replyMessage = document.getElementById('reply-message');
-        const cancelReply = document.getElementById('cancel-reply');
-        let replyingTo = null;
-        const role = '{{ role }}';
-        const rooms = {};
-
-        socket.on('connect', function() {
-            console.log('Connected to server');
-            const roomId = '{{ session["room_id"] }}';
-            if (!rooms[roomId]) {
-                rooms[roomId] = { chat_history: [] };
-            }
-        });
-
-        socket.on('connect_error', function(error) {
-            console.error('Connection error:', error);
-            alert('Failed to connect to server. Please try again.');
-        });
-
-        socket.on('message', function(data) {
-            console.log('Received message:', data);
-            const div = document.createElement('div');
-            div.className = `message ${data.type || (data.role ? data.role.toLowerCase() : 'system')}${data.reply_to ? ' reply' : ''}`;
-            div.dataset.messageId = data.id;
-
-            if (data.reply_to) {
-                const replyInfo = document.createElement('div');
-                replyInfo.className = 'reply-info';
-                const repliedMsg = rooms['{{ session["room_id"] }}']?.chat_history?.find(msg => msg.id === data.reply_to) || {};
-                replyInfo.textContent = `Replying to ${repliedMsg.username || 'Unknown'}: ${repliedMsg.message || ''}`;
-                div.appendChild(replyInfo);
-            }
-
-            div.innerHTML += `
-                <div class="message-header">${data.username} (${data.role || 'System'})</div>
-                <div>${data.message}</div>
-                <div class="message-timestamp">${data.timestamp}</div>
-            `;
-            div.addEventListener('click', () => {
-                replyingTo = data.id;
-                replyUsername.textContent = data.username || 'Unknown';
-                replyMessage.textContent = data.message || '';
-                replyBox.style.display = 'block';
-                messageInput.focus();
+        document.addEventListener('DOMContentLoaded', function() {
+            const socket = io({
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000
             });
-            chat.appendChild(div);
-            chat.scrollTop = chat.scrollHeight;
+            const chat = document.getElementById('chat');
+            const userListContent = document.getElementById('user-list-content');
+            const messageInput = document.getElementById('message');
+            const replyBox = document.getElementById('reply-box');
+            const replyUsername = document.getElementById('reply-username');
+            const replyMessage = document.getElementById('reply-message');
+            const cancelReply = document.getElementById('cancel-reply');
+            let replyingTo = null;
+            const role = '{{ role }}';
+            const rooms = {};
 
-            rooms['{{ session["room_id"] }}'].chat_history.push(data);
-
-            // Play notification sound
-            const audio = document.getElementById('backgroundMusic');
-            if (audio) {
-                audio.play().catch(err => console.error('Audio play error:', err));
-            }
-        });
-
-        socket.on('user_list', function(data) {
-            console.log('Received user list:', data);
-            userList.innerHTML = '';
-            if (data.users && Array.isArray(data.users)) {
-                data.users.forEach(user => {
-                    const li = document.createElement('li');
-                    li.innerHTML = `<span class="active-indicator"></span>${user.username} (${user.role})`;
-                    if (user.role === 'Member' && role === 'Owner') {
-                        li.innerHTML += ` <button class="user-action-btn" onclick="sendCommand('/kick ${user.username}')">Kick</button>`;
-                        li.innerHTML += ` <button class="user-action-btn" onclick="sendCommand('/ban ${user.username}')">Ban</button>`;
-                    }
-                    userList.appendChild(li);
-                });
-            } else {
-                console.error('Invalid user list data:', data);
-            }
-        });
-
-        socket.on('kick', function(data) {
-            const modal = document.getElementById('kickBanModal');
-            const message = document.getElementById('kickBanMessage');
-            message.textContent = data.message;
-            modal.style.display = 'block';
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 2000);
-        });
-
-        socket.on('ban', function(data) {
-            const modal = document.getElementById('kickBanModal');
-            const message = document.getElementById('kickBanMessage');
-            message.textContent = data.message;
-            modal.style.display = 'block';
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 2000);
-        });
-
-        socket.on('room_closed', function(data) {
-            const modal = document.getElementById('kickBanModal');
-            const message = document.getElementById('kickBanMessage');
-            message.textContent = data.message;
-            modal.style.display = 'block';
-            setTimeout(() => {
-                window.location.href = '/';
-            }, 2000);
-        });
-
-        function sendMessage() {
-            const message = messageInput.value.trim();
-            if (message) {
-                const messageData = { message: message };
-                if (replyingTo) {
-                    messageData.reply_to = replyingTo;
+            socket.on('connect', function() {
+                console.log('Connected to server');
+                const roomId = '{{ session["room_id"] }}';
+                if (!rooms[roomId]) {
+                    rooms[roomId] = { chat_history: [] };
                 }
-                socket.emit('message', messageData);
-                console.log('Sent message:', messageData);
-                messageInput.value = '';
-                if (replyingTo) {
+            });
+
+            socket.on('connect_error', function(error) {
+                console.error('Connection error:', error);
+                alert('Failed to connect to server. Please try again.');
+            });
+
+            socket.on('message', function(data) {
+                const div = document.createElement('div');
+                div.className = `message ${data.role ? data.role.toLowerCase() : 'system'}${data.reply_to ? ' reply' : ''}`;
+                div.dataset.messageId = data.id;
+
+                if (data.reply_to) {
+                    const replyInfo = document.createElement('div');
+                    replyInfo.className = 'reply-info';
+                    const repliedMsg = rooms['{{ session["room_id"] }}']?.chat_history?.find(msg => msg.id === data.reply_to) || {};
+                    replyInfo.textContent = `Replying to ${repliedMsg.username || 'Unknown'}: ${repliedMsg.message || ''}`;
+                    div.appendChild(replyInfo);
+                }
+
+                div.innerHTML += `
+                    <div class="message-header">${data.username} (${data.role || 'System'})</div>
+                    <div>${data.message}</div>
+                    <div class="message-timestamp">${data.timestamp}</div>
+                `;
+                div.addEventListener('click', () => {
+                    replyingTo = data.id;
+                    replyUsername.textContent = data.username || 'Unknown';
+                    replyMessage.textContent = data.message || '';
+                    replyBox.style.display = 'block';
+                    messageInput.focus();
+                });
+                chat.appendChild(div);
+                chat.scrollTop = chat.scrollHeight;
+
+                rooms['{{ session["room_id"] }}'].chat_history.push(data);
+
+                // Play notification sound
+                const audio = document.getElementById('backgroundMusic');
+                if (audio) {
+                    audio.play().catch(err => console.error('Audio play error:', err));
+                }
+            });
+
+            socket.on('user_list', function(data) {
+                if (userListContent) {
+                    userListContent.innerHTML = '';
+                    if (data.users && Array.isArray(data.users)) {
+                        data.users.forEach(user => {
+                            const li = document.createElement('li');
+                            li.innerHTML = `<span class="active-indicator"></span>${user.username} (${user.role})`;
+                            if (user.role === 'Member' && role === 'Owner') {
+                                li.innerHTML += ` <button class="user-action-btn" onclick="sendCommand('/kick ${user.username}')">Kick</button>`;
+                                li.innerHTML += ` <button class="user-action-btn" onclick="sendCommand('/ban ${user.username}')">Ban</button>`;
+                            }
+                            userListContent.appendChild(li);
+                        });
+                    } else {
+                        console.error('Invalid user list data:', data);
+                    }
+                } else {
+                    console.error('user-list-content element not found');
+                }
+            });
+
+            socket.on('kick', function(data) {
+                const modal = document.getElementById('kickBanModal');
+                const message = document.getElementById('kickBanMessage');
+                message.innerText = data.message;
+                modal.style.display = 'block';
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            });
+
+            socket.on('ban', function(data) {
+                const modal = document.getElementById('kickBanModal');
+                const message = document.getElementById('kickBanMessage');
+                message.innerText = data.message;
+                modal.style.display = 'block';
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            });
+
+            socket.on('room_closed', function(data) {
+                const modal = document.getElementById('kickBanModal');
+                const message = document.getElementById('kickBanMessage');
+                message.innerText = data.message;
+                modal.style.display = 'block';
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            });
+
+            function sendMessage() {
+                const message = messageInput.value.trim();
+                if (message) {
+                    const messageData = { message: message };
+                    if (replyingTo) {
+                        messageData.reply_to = replyingTo;
+                    }
+                    socket.emit('message', messageData);
+                    messageInput.value = '';
+                    if (replyingTo) {
+                        replyingTo = null;
+                        replyBox.style.display = 'none';
+                    }
+                }
+            }
+
+            function sendCommand(command) {
+                socket.emit('message', { message: command });
+            }
+
+            function copyCode() {
+                const code = document.getElementById('room-code')?.textContent;
+                if (code) {
+                    navigator.clipboard.writeText(code).then(() => {
+                        alert('Code copied!');
+                    }).catch(err => {
+                        console.error('Error copying code:', err);
+                        alert('Error copying code: ' + err);
+                    });
+                } else {
+                    console.error('room-code element not found');
+                    alert('Error: Room code not found');
+                }
+            }
+
+            if (cancelReply) {
+                cancelReply.addEventListener('click', () => {
                     replyingTo = null;
                     replyBox.style.display = 'none';
-                }
+                });
             }
-        }
 
-        function sendCommand(command) {
-            socket.emit('message', { message: command });
-            console.log('Sent command:', command);
-        }
-
-        function copyCode() {
-            const code = document.getElementById('room-code').textContent;
-            navigator.clipboard.writeText(code).then(() => {
-                alert('Code copied!');
-            }).catch(err => {
-                console.error('Error copying code:', err);
-                alert('Error copying code: ' + err);
-            });
-        }
-
-        cancelReply.addEventListener('click', () => {
-            replyingTo = null;
-            replyBox.style.display = 'none';
+            const userList = document.getElementById('user-list');
+            const userListToggle = document.querySelector('.user-list-toggle');
+            if (userListToggle && userList) {
+                userListToggle.addEventListener('click', () => {
+                    userList.classList.toggle('active');
+                });
+            } else {
+                console.error('user-list or user-list-toggle not found');
+            }
         });
 
-        // Particle animation
         const canvas = document.getElementById('particleCanvas');
         const ctx = canvas.getContext('2d');
 
@@ -733,11 +745,8 @@
         const particlesArray = [];
         const particleCount = 100;
 
-        function initParticles() {
-            particlesArray.length = 0; // Clear existing particles
-            for (let i = 0; i < particleCount; i++) {
-                particlesArray.push(new Particle());
-            }
+        for (let i = 0; i < particleCount; i++) {
+            particlesArray.push(new Particle());
         }
 
         function connectParticles() {
@@ -759,28 +768,22 @@
         }
 
         function animate() {
-            try {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                for (let i = 0; i < particlesArray.length; i++) {
-                    particlesArray[i].update();
-                    particlesArray[i].draw();
-                }
-                connectParticles();
-                requestAnimationFrame(animate);
-            } catch (err) {
-                console.error('Animation error:', err);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+                particlesArray[i].draw();
             }
+            connectParticles();
+            requestAnimationFrame(animate);
         }
 
-        // Initialize particles and start animation
-        initParticles();
         animate();
 
-        // Header scroll behavior
         let lastScrollTop = 0;
         window.addEventListener('scroll', () => {
             const header = document.querySelector('.header');
             const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
+
             if (currentScroll > lastScrollTop && currentScroll > 50) {
                 header.classList.add('hidden');
             } else {
@@ -789,18 +792,17 @@
             lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
         });
 
-        // Audio controls
         const audio = document.getElementById('backgroundMusic');
         const playBtn = document.getElementById('playBtn');
         const stopBtn = document.getElementById('stopBtn');
 
         audio.volume = 0.5;
         audio.play().catch(error => {
-            console.error('Autoplay blocked by browser:', error);
+            console.log("Autoplay blocked by browser:", error);
         });
 
         playBtn.addEventListener('click', () => {
-            audio.play().catch(err => console.error('Audio play error:', err));
+            audio.play();
             playBtn.style.display = 'none';
             stopBtn.style.display = 'block';
         });
@@ -812,19 +814,14 @@
             playBtn.style.display = 'block';
         });
 
-        // Menu and user list toggles
         const menuToggle = document.querySelector('.menu-toggle');
         const navMenu = document.querySelector('.nav-menu');
-        const userListToggle = document.querySelector('.user-list-toggle');
-        const userList = document.getElementById('user-list');
 
-        menuToggle.addEventListener('click', () => {
-            navMenu.classList.toggle('active');
-        });
-
-        userListToggle.addEventListener('click', () => {
-            userList.classList.toggle('active');
-        });
+        if (menuToggle && navMenu) {
+            menuToggle.addEventListener('click', () => {
+                navMenu.classList.toggle('active');
+            });
+        }
     </script>
 </body>
 </html>
