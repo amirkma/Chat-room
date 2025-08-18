@@ -672,7 +672,8 @@
                 if (data.reply_to) {
                     const replyInfo = document.createElement('div');
                     replyInfo.className = 'reply-info';
-                    replyInfo.textContent = `Replying to ${data.username || 'Unknown'}: ${data.message || ''}`;
+                    const repliedMsg = rooms['{{ session["room_id"] }}'].chat_history.find(msg => msg.id === data.reply_to) || {};
+                    replyInfo.textContent = `Replying to ${repliedMsg.username || 'Unknown'}: ${repliedMsg.message || ''}`;
                     div.appendChild(replyInfo);
                 }
 
