@@ -73,6 +73,10 @@ def generate_code():
         logging.warning("Generate code attempted without username")
         return jsonify({'error': 'Username is required!'})
     
+    if len(rooms) >= 10:
+        logging.warning("Maximum number of rooms reached")
+        return jsonify({'error': 'Maximum number of rooms reached!'})
+    
     room_id = secrets.token_hex(16)
     invite_code = generate_secure_code()
     
@@ -126,13 +130,14 @@ def connect(auth=None):
     
     update_user_list(room_id)
     emit('message', {
+        'id': secrets.token_hex(8),  # اضافه کردن ID منحصربه‌فرد برای پیام
         'username': 'System',
         'message': f'{username} ({role}) joined.',
         'timestamp': time.strftime('%H:%M:%S'),
         'type': 'join'
     }, room=room_id)
     for msg in rooms[room_id]['chat_history']:
-        emit('message', msg, room=request.sid)
+        emit('message', msg, to=request.sid)
 
 @socketio.on('disconnect')
 def disconnect_handler():
@@ -148,6 +153,7 @@ def disconnect_handler():
         logging.info(f"User {username} disconnected from room {room_id}")
         if role == 'Owner':
             emit('message', {
+                'id': secrets.token_hex(8),
                 'username': 'System',
                 'message': 'Room closed because Owner left.',
                 'timestamp': time.strftime('%H:%M:%S'),
@@ -163,19 +169,15 @@ def disconnect_handler():
             logging.info(f"Room {room_id} closed: Owner disconnected.")
         else:
             update_user_list(room_id)
-            msg = f'{username} ({role}) left.'
-            rooms[room_id]['chat_history'].append({
+            msg = {
+                'id': secrets.token_hex(8),
                 'username': 'System',
-                'message': msg,
+                'message': f'{username} ({role}) left.',
                 'timestamp': time.strftime('%H:%M:%S'),
                 'type': 'leave'
-            })
-            emit('message', {
-                'username': 'System',
-                'message': msg,
-                'timestamp': time.strftime('%H:%M:%S'),
-                'type': 'leave'
-            }, room=room_id)
+            }
+            rooms[room_id]['chat_history'].append(msg)
+            emit('message', msg, room=room_id)
 
 @socketio.on('message')
 def handle_message(data):
@@ -192,7 +194,8 @@ def handle_message(data):
     username = user_data['username']
     role = user_data['role']
     message = data['message']
-    logging.debug(f"Message from {username} in room {room_id}: {message}")
+    reply_to = data.get('reply_to', None)  # گرفتن اطلاعات پیام ریپلای‌شده
+    logging.debug(f"Message from {username} in room {room_id}: {message}, reply_to: {reply_to}")
     
     if role == 'Owner' and message.startswith('/'):
         command = message[1:].split()
@@ -202,19 +205,15 @@ def handle_message(data):
                 if user['username'] == target:
                     emit('kick', {'message': 'You have been kicked!'}, to=sid)
                     disconnect(sid)
-                    msg = f'{target} was kicked.'
-                    rooms[room_id]['chat_history'].append({
+                    msg = {
+                        'id': secrets.token_hex(8),
                         'username': 'System',
-                        'message': msg,
+                        'message': f'{target} was kicked.',
                         'timestamp': time.strftime('%H:%M:%S'),
                         'type': 'system'
-                    })
-                    emit('message', {
-                        'username': 'System',
-                        'message': msg,
-                        'timestamp': time.strftime('%H:%M:%S'),
-                        'type': 'system'
-                    }, room=room_id)
+                    }
+                    rooms[room_id]['chat_history'].append(msg)
+                    emit('message', msg, room=room_id)
                     update_user_list(room_id)
                     return
         elif command[0] == 'ban' and len(command) > 1:
@@ -224,23 +223,20 @@ def handle_message(data):
                 if user['username'] == target:
                     emit('ban', {'message': 'You have been banned!'}, to=sid)
                     disconnect(sid)
-            msg = f'{target} was banned.'
-            rooms[room_id]['chat_history'].append({
+            msg = {
+                'id': secrets.token_hex(8),
                 'username': 'System',
-                'message': msg,
+                'message': f'{target} was banned.',
                 'timestamp': time.strftime('%H:%M:%S'),
                 'type': 'system'
-            })
-            emit('message', {
-                'username': 'System',
-                'message': msg,
-                'timestamp': time.strftime('%H:%M:%S'),
-                'type': 'system'
-            }, room=room_id)
+            }
+            rooms[room_id]['chat_history'].append(msg)
+            emit('message', msg, room=room_id)
             update_user_list(room_id)
             return
         elif command[0] == 'close':
             emit('message', {
+                'id': secrets.token_hex(8),
                 'username': 'System',
                 'message': 'Room closed by Owner.',
                 'timestamp': time.strftime('%H:%M:%S'),
@@ -257,13 +253,17 @@ def handle_message(data):
             return
     
     msg_data = {
+        'id': secrets.token_hex(8),
         'username': username,
         'role': role,
         'message': message,
         'timestamp': time.strftime('%H:%M:%S'),
-        'type': 'user'
+        'type': 'user',
+        'reply_to': reply_to  # ذخیره اطلاعات ریپلای
     }
     rooms[room_id]['chat_history'].append(msg_data)
+    if len(rooms[room_id]['chat_history']) > 100:
+        rooms[room_id]['chat_history'] = rooms[room_id]['chat_history'][-100:]
     emit('message', msg_data, room=room_id)
 
 def update_user_list(room_id):
