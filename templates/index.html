@@ -359,12 +359,12 @@
                 <p class="error">{{ error }}</p>
             {% endif %}
             <form action="/login" method="post" class="flex flex-col items-center">
-                <input type="text" id="username" name="username" placeholder="Username" class=".input-field" required>
-                <input type="text" id="invite_code" name="invite_code" placeholder="Invite Code" class=".input-field" required>
-                <button type="submit" class="action-btn">Join Now</button>
+                <input type="text" id="username" name="username" placeholder="Username" class="input-field" required>
+                <input type="text" id="invite_code" name="invite_code" placeholder="Invite Code" class="input-field" required>
+                <br><button type="submit" class="action-btn">Join Now</button><br><br>
             </form>
             <form id="generateCodeForm" class="flex flex-col items-center mt-4">
-                <br><input type="text" id="usernameForCode" name="username" placeholder="Username for New Code" class=".input-field" required>
+                <br><input type="text" id="usernameForCode" name="username" placeholder="Username for New Code" class="input-field" required>
                 <button type="button" onclick="generateCode()" class="action-btn">Generate New Code</button>
             </form>
         </div>
